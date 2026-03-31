@@ -1,0 +1,127 @@
+# ==========================================
+# QuantFlow Lab - 应用配置
+# ==========================================
+
+app:
+  title: "QuantFlow Lab"
+  theme: "light"
+
+
+# 数据路径
+data:
+  raw_path: "data/raw"
+  processed_path: "data/processed"
+  tushare_token: "your_token_here"
+
+# ==========================================
+# 因子库配置：支持动态加载
+# ==========================================
+factors:
+  momentum:
+    class_name: "MomentumFactors"
+    module_path: "core.factors.momentum"
+    factors:
+      - name: "RSI"
+        method: "calculate_rsi"
+        description: "相对强度指数"
+        return_type: "series"
+        params:
+          period:
+            type: "slider"
+            label: "周期"
+            min: 5
+            max: 50
+            default: 14
+      - name: "MA"
+        method: "calculate_ma"
+        description: "简单移动平均"
+        return_type: "series"
+        params:
+          period:
+            type: "slider"
+            label: "周期"
+            min: 5
+            max: 200
+            default: 20
+      - name: "EMA"
+        method: "calculate_ema"
+        description: "指数移动平均"
+        return_type: "series"
+        params:
+          period:
+            type: "slider"
+            label: "周期"
+            min: 5
+            max: 200
+            default: 20
+      - name: "Momentum"
+        method: "calculate_momentum"
+        description: "动量指标"
+        return_type: "series"
+        params:
+          period:
+            type: "slider"
+            label: "周期"
+            min: 5
+            max: 50
+            default: 10
+      - name: "ROC"
+        method: "calculate_roc"
+        description: "变化率指标"
+        return_type: "series"
+        params:
+          period:
+            type: "slider"
+            label: "周期"
+            min: 5
+            max: 50
+            default: 12
+      - name: "MACD"
+        method: "calculate_macd"
+        description: "MACD指标"
+        return_type: "tuple"
+        return_names: ["MACD", "Signal", "Histogram"]
+        params:
+          fast:
+            type: "slider"
+            label: "快速EMA"
+            min: 5
+            max: 20
+            default: 12
+          slow:
+            type: "slider"
+            label: "慢速EMA"
+            min: 15
+            max: 50
+            default: 26
+          signal:
+            type: "slider"
+            label: "信号线"
+            min: 5
+            max: 20
+            default: 9
+      - name: "Bollinger Bands"
+        method: "calculate_bollinger_bands"
+        description: "布林带"
+        return_type: "tuple"
+        return_names: ["Upper", "Middle", "Lower"]
+        params:
+          period:
+            type: "slider"
+            label: "周期"
+            min: 5
+            max: 50
+            default: 20
+          std_dev:
+            type: "slider"
+            label: "标准差倍数"
+            min: 1.0
+            max: 5.0
+            default: 2.0
+            step: 0.1
+
+backtest:
+  initial_capital: 1000000
+  commission: 0.001
+  slippage: 0.0001
+  max_position_size: 0.1
