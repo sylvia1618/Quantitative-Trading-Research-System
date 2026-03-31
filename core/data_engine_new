@@ -1,0 +1,104 @@
+import baostock as bs
+import pandas as pd
+from pathlib import Path
+from tqdm import tqdm
+import time
+import os
+
+# --- 配置区 ---
+DATA_DIR = Path(r"D:\量化平台\QuantFlow_Lab\data")
+START_DATE = "2020-01-01"
+END_DATE = "2026-03-17"
+# 目标字段
+TARGET_COLS = ["date", "turn", "pctChg", "isST", "pbMRQ", "peTTM"]
+
+def safe_process_one(path):
+    tmp_path = path.with_suffix('.parquet.tmp')
+    try:
+        # 1. 读取原文件
+        df_old = pd.read_parquet(path)
+        df_old['date'] = pd.to_datetime(df_old['date'])
+
+        # 2. 检查是否需要补全 (逻辑：字段存在且非空比例高)
+        if 'pbMRQ' in df_old.columns and df_old['pbMRQ'].notna().mean() > 0.8:
+            return "skip"
+
+        market = path.parent.name
+        symbol = path.stem
+        code = f"{market}.{symbol}"
+
+        # 3. 获取新指标（带 3 次重试机制）
+        df_ext = None
+        for i in range(3):
+            rs = bs.query_history_k_data_plus(
+                code, ",".join(TARGET_COLS),
+                start_date=START_DATE, end_date=END_DATE,
+                frequency="d", adjustflag="2"
+            )
+            rows = []
+            while rs.next():
+                rows.append(rs.get_row_data())
+            
+            if rows:
+                df_ext = pd.DataFrame(rows, columns=rs.fields)
+                break
+            time.sleep(1) # 失败则等待
+        
+        if df_ext is None:
+            return "empty"
+
+        # 4. 数据清洗与类型转换 (关键：防止变成 Object 类型)
+        df_ext['date'] = pd.to_datetime(df_ext['date'])
+        for col in ['turn', 'pctChg', 'pbMRQ', 'peTTM']:
+            df_ext[col] = pd.to_numeric(df_ext[col], errors='coerce')
+
+        # 5. 合并数据
+        df_merged = pd.merge(df_old, df_ext, on='date', how='left')
+
+        # 6. 【核心保护逻辑】写入临时文件并校验
+        if tmp_path.exists(): tmp_path.unlink()
+        df_merged.to_parquet(tmp_path, compression='snappy', index=False)
+        
+        # 校验写入是否完整
+        check_df = pd.read_parquet(tmp_path)
+        if 'pbMRQ' in check_df.columns:
+            # 只有校验成功，才执行物理替换
+            if path.exists():
+                os.remove(path) # Windows下必须先删除才能rename成功
+            tmp_path.rename(path)
+            return "ok"
+        else:
+            if tmp_path.exists(): tmp_path.unlink()
+            return "fail"
+
+    except Exception as e:
+        if tmp_path.exists(): tmp_path.unlink()
+        return f"error: {e}"
+
+# ======================
+# 主循环入口
+# ======================
+if __name__ == "__main__":
+    bs.login()
+    
+    # 扫描全市场文件
+    files = list((DATA_DIR / "sh").glob("*.parquet")) + \
+            list((DATA_DIR / "sz").glob("*.parquet"))
+    
+    stats = {"ok":0, "skip":0, "empty":0, "fail":0, "error":0}
+    
+    pbar = tqdm(files, desc="📊 正在安全补全因子数据")
+    for f in pbar:
+        res = safe_process_one(f)
+        
+        if res.startswith("error"):
+            stats["error"] += 1
+            # print(f"\n❌ {f.stem} 报错: {res}") # 如果想看具体报错可取消注释
+        else:
+            stats[res] += 1
+        
+        pbar.set_postfix(stats)
+        time.sleep(0.15) # 稍微提速，0.15s 是 Baostock 比较稳的频率
+
+    bs.logout()
+    print("\n✅ 补全任务结束！统计结果：", stats)
